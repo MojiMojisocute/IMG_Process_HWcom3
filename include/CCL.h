@@ -5,9 +5,17 @@
 #include "Image.h"
 #include "WormHole.h"
 
+struct CCLDebug {
+    Image threshold;
+    Image clean;
+    Image filtered;
+    std::vector<WormHole> holes;
+};
+
 class CCL {
 public:
     static std::vector<WormHole> detect(const Image& src);
+    static CCLDebug detectDebug(const Image& src);
 
 private:
     static Image thresholdInv(const Image& src, unsigned char t);

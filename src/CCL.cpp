@@ -27,19 +27,17 @@ Image CCL::thresholdInv(const Image& src, unsigned char t) {
     size_t i = 0;
 #ifdef __AVX2__
     __m256i thresh = _mm256_set1_epi8((char)t);
-    // __m256i zero   = _mm256_setzero_si256();
     __m256i ff     = _mm256_set1_epi8((char)255);
     for (; i + 32 <= total; i += 32) {
         __m256i v    = _mm256_loadu_si256((__m256i*)(S+i));
         __m256i vs   = _mm256_xor_si256(v,      _mm256_set1_epi8((char)0x80));
         __m256i ts   = _mm256_xor_si256(thresh, _mm256_set1_epi8((char)0x80));
-        __m256i gt   = _mm256_cmpgt_epi8(vs, ts);   
+        __m256i gt   = _mm256_cmpgt_epi8(vs, ts);
         __m256i mask = _mm256_xor_si256(gt, ff);
         _mm256_storeu_si256((__m256i*)(D+i), _mm256_and_si256(mask, ff));
     }
 #elif defined(__SSE4_1__)
     __m128i thresh = _mm_set1_epi8((char)t);
-    __m128i zero   = _mm_setzero_si128();
     __m128i ff     = _mm_set1_epi8((char)255);
     for (; i + 16 <= total; i += 16) {
         __m128i v    = _mm_loadu_si128((__m128i*)(S+i));
@@ -113,6 +111,7 @@ Image CCL::erosion(const Image& src, int kernelSize) {
     for (int y = 0; y < h; y++) {
         const unsigned char* row = S + y*w;
         unsigned char* out = T + y*w;
+        erodeRow(row, out, w, half);
         int x = half;
         for (; x <= w - half - 32; x += 32) {
             __m256i mn = _mm256_set1_epi8((char)255);
@@ -127,14 +126,13 @@ Image CCL::erosion(const Image& src, int kernelSize) {
             for (int k = -half; k <= half; k++) { if(row[x+k]<mn) mn=row[x+k]; }
             out[x] = mn;
         }
-        for (int bx = 0; bx < half; bx++) erodeRow(row, out, half, half); 
-        erodeRow(row, out, w, half);  
     }
     erodeCol(T, D, w, h, half);
 #elif defined(__SSE4_1__)
     for (int y = 0; y < h; y++) {
         const unsigned char* row = S + y*w;
         unsigned char* out = T + y*w;
+        erodeRow(row, out, w, half);
         int x = half;
         for (; x <= w - half - 16; x += 16) {
             __m128i mn = _mm_set1_epi8((char)255);
@@ -149,7 +147,6 @@ Image CCL::erosion(const Image& src, int kernelSize) {
             for (int k = -half; k <= half; k++) { if(row[x+k]<mn) mn=row[x+k]; }
             out[x] = mn;
         }
-        erodeRow(row, out, w, half);
     }
     erodeCol(T, D, w, h, half);
 #else
@@ -169,6 +166,7 @@ Image CCL::dilation(const Image& src, int kernelSize) {
     for (int y = 0; y < h; y++) {
         const unsigned char* row = S + y*w;
         unsigned char* out = T + y*w;
+        dilateRow(row, out, w, half);
         int x = half;
         for (; x <= w - half - 32; x += 32) {
             __m256i mx = _mm256_setzero_si256();
@@ -183,13 +181,13 @@ Image CCL::dilation(const Image& src, int kernelSize) {
             for (int k = -half; k <= half; k++) { if(row[x+k]>mx) mx=row[x+k]; }
             out[x] = mx;
         }
-        dilateRow(row, out, w, half);
     }
     dilateCol(T, D, w, h, half);
 #elif defined(__SSE4_1__)
     for (int y = 0; y < h; y++) {
         const unsigned char* row = S + y*w;
         unsigned char* out = T + y*w;
+        dilateRow(row, out, w, half);
         int x = half;
         for (; x <= w - half - 16; x += 16) {
             __m128i mx = _mm_setzero_si128();
@@ -204,7 +202,6 @@ Image CCL::dilation(const Image& src, int kernelSize) {
             for (int k = -half; k <= half; k++) { if(row[x+k]>mx) mx=row[x+k]; }
             out[x] = mx;
         }
-        dilateRow(row, out, w, half);
     }
     dilateCol(T, D, w, h, half);
 #else
@@ -215,14 +212,14 @@ Image CCL::dilation(const Image& src, int kernelSize) {
 }
 
 Image CCL::morphOpen(const Image& src, int kernelSize, int iterations) {
-    Image img = src.clone();
+    Image img = src;
     for (int i = 0; i < iterations; i++) img = erosion(img, kernelSize);
     for (int i = 0; i < iterations; i++) img = dilation(img, kernelSize);
     return img;
 }
 
 Image CCL::morphClose(const Image& src, int kernelSize, int iterations) {
-    Image img = src.clone();
+    Image img = src;
     for (int i = 0; i < iterations; i++) img = dilation(img, kernelSize);
     for (int i = 0; i < iterations; i++) img = erosion(img, kernelSize);
     return img;
@@ -234,15 +231,21 @@ std::vector<int> CCL::labelComponents(const Image& binary, int& numLabels) {
     const unsigned char* B = binary.getRawPixels();
     size_t total = (size_t)w * h;
     std::vector<int> labels(total, 0);
-    std::vector<int> parent(total + 1);
-    for (size_t i = 0; i <= total; i++) parent[i] = (int)i;
     int nextLabel = 1;
+    std::vector<int> parent(total / 4 + 2);
+    parent[0] = 0;
+
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             if (B[y*w+x] == 0) continue;
             int up   = (y > 0 && B[(y-1)*w+x]) ? labels[(y-1)*w+x] : 0;
             int left = (x > 0 && B[y*w+x-1])   ? labels[y*w+x-1]   : 0;
-            if (!up && !left) { labels[y*w+x] = nextLabel++; continue; }
+            if (!up && !left) {
+                if (nextLabel >= (int)parent.size()) parent.resize(nextLabel * 2);
+                parent[nextLabel] = nextLabel;
+                labels[y*w+x] = nextLabel++;
+                continue;
+            }
             if ( up && !left) { labels[y*w+x] = up;   continue; }
             if (!up &&  left) { labels[y*w+x] = left; continue; }
             int root = (up < left) ? up : left;
@@ -308,4 +311,37 @@ std::vector<WormHole> CCL::detect(const Image& src) {
     std::vector<WormHole> holes = computeHoles(labels, numLabels,
                                                src.getWidth(), src.getHeight());
     return filter(holes, MIN_AREA, MAX_AREA);
+}
+
+CCLDebug CCL::detectDebug(const Image& src) {
+    CCLDebug dbg;
+
+    Image binary  = thresholdInv(src, THRESHOLD);
+    Image opened  = morphOpen (binary, MORPH_KERNEL_SIZE, OPEN_ITERATIONS);
+    Image cleaned = morphClose(opened, MORPH_KERNEL_SIZE, CLOSE_ITERATIONS);
+
+    dbg.threshold = binary;
+    dbg.clean     = cleaned;
+
+    int numLabels = 0;
+    std::vector<int> labels = labelComponents(cleaned, numLabels);
+    std::vector<WormHole> allHoles = computeHoles(labels, numLabels,
+                                                  src.getWidth(), src.getHeight());
+    dbg.holes = filter(allHoles, MIN_AREA, MAX_AREA);
+
+    int w = src.getWidth(), h = src.getHeight();
+    Image filteredImg(w, h, 1);
+    filteredImg.fill(0);
+    for (int idx = 0; idx < (int)allHoles.size(); idx++) {
+        if (allHoles[idx].area > MIN_AREA && allHoles[idx].area < MAX_AREA) {
+            int lb = idx + 1;
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    if (labels[y * w + x] == lb)
+                        filteredImg.setPixel(x, y, 255);
+        }
+    }
+    dbg.filtered = filteredImg;
+
+    return dbg;
 }

@@ -9,6 +9,7 @@ SRCS = $(SRCDIR)/main.cpp \
        $(SRCDIR)/Image.cpp \
        $(SRCDIR)/TIFFReader.cpp \
        $(SRCDIR)/Preprocessing.cpp \
+       $(SRCDIR)/TIFFWriter.cpp \
        $(SRCDIR)/CCL.cpp
 
 OBJS = $(patsubst $(SRCDIR)/%.cpp, $(OBJDIR)/%.o, $(SRCS))

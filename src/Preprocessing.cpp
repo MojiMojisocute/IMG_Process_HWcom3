@@ -1,4 +1,5 @@
 #include <cstring>
+#include <algorithm>
 #ifdef __AVX2__
 #include <immintrin.h>
 #endif
@@ -140,35 +141,49 @@ Image Preprocessing::medianBlur(const Image& src, int kernelSize) {
     int w = src.getWidth();
     int h = src.getHeight();
     int half = kernelSize / 2;
-    int winLen = kernelSize * kernelSize;
-    int medPos = winLen / 2;
+    int medPos = (kernelSize * kernelSize) / 2;
 
     Image result(w, h, 1);
     const unsigned char* S = src.getRawPixels();
     unsigned char* D = result.getRawPixels();
 
-    std::vector<unsigned char> win(winLen);
+    int hist[256];
 
     for (int y = 0; y < h; y++) {
+        memset(hist, 0, sizeof(hist));
+        // int colCount[256 * 1] = {};
+        std::vector<int> colHist(w * 256, 0);
+
+        for (int ky = -half; ky <= half; ky++) {
+            int ny = y + ky;
+            if (ny < 0) ny = 0; else if (ny >= h) ny = h - 1;
+            const unsigned char* row = S + ny * w;
+            for (int x = 0; x < w; x++) {
+                colHist[x * 256 + row[x]]++;
+            }
+        }
+
+        memset(hist, 0, sizeof(hist));
+        for (int x = 0; x < std::min(half, w - 1); x++) {
+            for (int v = 0; v < 256; v++) hist[v] += colHist[x * 256 + v];
+        }
+
         for (int x = 0; x < w; x++) {
-            int idx = 0;
-            for (int ky = -half; ky <= half; ky++) {
-                int ny = y + ky;
-                if (ny < 0) ny = 0; else if (ny >= h) ny = h - 1;
-                const unsigned char* row = S + ny * w;
-                for (int kx = -half; kx <= half; kx++) {
-                    int nx = x + kx;
-                    if (nx < 0) nx = 0; else if (nx >= w) nx = w - 1;
-                    win[idx++] = row[nx];
-                }
+            int addCol = x + half;
+            if (addCol >= w) addCol = w - 1;
+            for (int v = 0; v < 256; v++) hist[v] += colHist[addCol * 256 + v];
+
+            int count = 0;
+            for (int v = 0; v < 256; v++) {
+                count += hist[v];
+                if (count > medPos) { D[y * w + x] = (unsigned char)v; break; }
             }
-            for (int i = 0; i <= medPos; i++) {
-                int minIdx = i;
-                for (int j = i + 1; j < winLen; j++)
-                    if (win[j] < win[minIdx]) minIdx = j;
-                unsigned char tmp = win[i]; win[i] = win[minIdx]; win[minIdx] = tmp;
+
+            int removeCol = x - half;
+            if (removeCol < 0) removeCol = 0;
+            if (x - half >= 0) {
+                for (int v = 0; v < 256; v++) hist[v] -= colHist[removeCol * 256 + v];
             }
-            D[y * w + x] = win[medPos];
         }
     }
     return result;
