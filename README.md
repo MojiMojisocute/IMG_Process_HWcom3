@@ -8,10 +8,11 @@ ___
 ## Dataset
 - **Data/WormHole_1H.tif** - An eggplant image with only one wormhole.  
 
-<img src=".github/assets/WormHole_1H.png" width="300" />
+![WormHole_1H](.github/assets/WormHole_1H.png")
 
-- **Data/WormHole_2H.tif** - An eggplant image with only two wormholes.  
-<img src=".github/assets/WormHole_1H.png" width="300" />
+- **Data/WormHole_2H.tif** - An eggplant image with only two wormholes.
+
+![WormHole_1H](.github/assets/WormHole_2H.png")
 
 ## Project Structure
 ```bash
