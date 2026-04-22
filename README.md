@@ -12,7 +12,7 @@ ___
 
 - **Data/WormHole_2H.tif** - An eggplant image with only two wormholes.
 
-![WormHole_1H](.github/assets/WormHole_2H.png")
+![WormHole_2H](.github/assets/WormHole_2H.png")
 
 ## Project Structure
 ```bash
